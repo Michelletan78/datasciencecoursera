@@ -1,0 +1,204 @@
+---
+title: "Bayesian modeling and prediction for Movies project"
+author: "Michelle Tan"
+date: "6/24/2018"
+output: 
+  html_document:
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(BAS)
+library(MASS)
+```
+
+```{r load-data}
+load("~/statistical  with R /week 5 /_e1fe0c85abec6f73c72d73926884eaca_movies.Rdata")
+```
+
+## Part 1: Data
+1- This study is observational as is it conducted after the data collection and no experiment was design to control variables or test some parameters prior to the data collection.
+
+2- Additionally, as described in the codebook of this dataset, the sample was built using random sampling of the movies produced and released before 2016. This makes the study generalizable to the entire population of movies the sample was drawn from. Since this is an generalizable observational study, we will only be able to conclude correlations between the population’s variables but no causal inference can be made since there was no experiment performed.
+
+3- Potential source of bias: Since there is no mean for us to know if a voter is allowed to rate the same movie several time, hence influencing the rating parameter of the movies, this can be considered a source of potential bias to the study.
+
+
+
+* * *
+
+## Part 2: Data manipulation
+
+Let’s create few variables as required before proceeding with the data exploration.
+```{r}
+# New variable title_type
+movies <- movies %>% mutate(feature_film = ifelse(grepl("feature", tolower(title_type)), "yes", "no"))
+```
+
+```{r}
+# New variable drama
+
+movies <- movies %>% mutate(drama = ifelse(grepl("drama", tolower(genre)), "yes", "no"))
+
+# New variable mpaa_rating_R
+
+movies <- movies %>% mutate(mpaa_rating_R = ifelse(grepl("r", tolower(mpaa_rating)), "yes", "no"))
+
+# Two new variables oscar_season & summer_season
+
+movies <- movies %>% mutate(oscar_season = factor(thtr_rel_month %in% c(10, 11, 12), labels=c("no", "yes")))
+
+movies <- movies %>% mutate(summer_season = factor(thtr_rel_month %in% c(5, 6, 7, 8), labels=c("no", "yes")))
+```
+
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+Let’s explore this dataset for the relationship between audience_score and the five (05) variables previously created.
+
+Audience score summary statistics by feature_film status
+```{r}
+movies %>% group_by(feature_film) %>% summarise(Count = n(), avg=mean(audience_score), Median=median(audience_score), IQR=IQR(audience_score), Total_score=sum(audience_score))
+```
+
+```{r}
+ggplot(data=movies, aes(x=feature_film, y=audience_score))+geom_col(fill="blue")
+```
+
+```{r}
+ggplot(data = movies, aes(x=feature_film, y=audience_score))+geom_boxplot(fill="blue")
+```
+
+##summary statistics show that feature films on average lower than non-feature films. Thi is confirmed by the bar plot showing the total audience score per feature status. Additionally, the box plot indicates consistence of the middle 50% of the audience in scoring on non-features movies as the Inter-quartile indicates 12.5 points variation.
+
+#Audience score summary statistics by drama status
+```{r}
+movies %>% group_by(drama) %>% summarise(Count = n(), avg=mean(audience_score), Median=median(audience_score), IQR=IQR(audience_score), Total_score=sum(audience_score))
+```
+
+```{r}
+ggplot(data = movies, aes(x=mpaa_rating_R, y=audience_score))+geom_col(fill="blue")
+```
+
+```{r}
+ggplot(data = movies, aes(x=mpaa_rating_R, y=audience_score))+geom_boxplot(fill="blue")
+```
+The Audience score appaears to be slightly higher for the films with an mpaa_rating of value R.This seems to indicate that the mpaa_rating may slightly influence the audience scoring value. Howerver IQRs seems to indicate quite a lot of variablility within of audience scoring withing each mpaa_rating category.
+
+Audience score summary statistics by oscar_season status
+```{r}
+movies %>% group_by(oscar_season) %>% summarise(Count = n(), avg=mean(audience_score), Median=median(audience_score), IQR=IQR(audience_score), Total_score=sum(audience_score))
+```
+
+```{r}
+ggplot(data = movies, aes(x=oscar_season, y=audience_score))+geom_col(fill="blue")
+```
+
+```{r}
+ggplot(data = movies, aes(x=oscar_season, y=audience_score))+geom_boxplot(fill="blue")
+```
+The mean and median audience score by oscar_season àre not too different when the film was released in theater during an oscar season or not.
+Audience score summary statistics by summer_season status
+```{r}
+movies %>% group_by(summer_season) %>% summarise(Count = n(), avg=mean(audience_score), Median=median(audience_score), IQR=IQR(audience_score), Total_score=sum(audience_score))
+```
+
+```{r}
+ggplot(data = movies, aes(x=summer_season, y=audience_score))+geom_col(fill="blue")
+```
+
+```{r}
+ggplot(data = movies, aes(x=summer_season, y=audience_score))+geom_boxplot(fill="blue")
+```
+The summer_season variable seems to indicate the same trend as for the oscar_season.
+
+
+* * *
+
+## Part 4: Modeling
+Model selection
+We will first fit the multi-linear model and perform a BIC based model selection.
+```{r}
+movies_lm <- lm(formula = audience_score ~ feature_film + drama + runtime + mpaa_rating_R + thtr_rel_year + oscar_season + summer_season + imdb_rating + imdb_num_votes + critics_score + best_pic_nom + best_pic_win + best_actor_win + best_actress_win + best_dir_win + top200_box, data =na.omit(movies))
+
+n<- nrow(na.omit(movies))
+
+movies_BIC <- stepAIC(movies_lm, direction = "backward", trace = 0, k=log(n))
+
+summary(movies_BIC)
+
+```
+The model selected based on the BIC considers that runtime, imdb_rating and the critics_score are the most suitable predictors for the the response variable audience_score.
+
+The intercept is not significant as it predicts a penalty of -32.9 points on the audience_score if all predictors are given a value of zero which is not realistic.
+
+The issue here is that we are unable to quantify the level of uncertainty of this model and we might be discarding some variables which are important for this prediction. To ensure we have a look at all the models and quantify the uncertainties associated to each of them.
+Using BMA to fit all possible models with their posterior probabilities
+```{r}
+movies_bma <- bas.lm(formula = audience_score ~ feature_film + drama + runtime + mpaa_rating_R + thtr_rel_year + oscar_season + summer_season + imdb_rating + imdb_num_votes + critics_score + best_pic_nom + best_pic_win + best_actor_win + best_actress_win + best_dir_win + top200_box, data = na.omit(movies), prior = "BIC", modelprior = uniform())
+
+movies_bma
+```
+
+```{r}
+summary(movies_bma)
+```
+Let’s plot this BMA to have a visual of eahc model
+```{r}
+image(movies_bma,rotate = FALSE)
+```
+Looking at the BMA summary executed with BIC as the model selection factor, we can clearly see that model 1 which has the Bayes Factor of 1 and the highest posterior probability of 16.86%, corresponds to the model from the simple BIC analysis. However, we can also see that the model 2 which was silently discarded in the previous BIC model selection has 14.7% probability and a Bayesian factor of 0.87 which is quite high.
+
+The visual shows that the imdb_rating and the critics_score are the main two predictors as they are represented in all the models with a high odds posterior probability log.
+
+The runtime is however present in the first model but looking at the reduction in BIC value or at the increase of the adjusted R-square when adding the runtime in the model, one may say the model 2 is likely fitted as the model 1.
+
+We will stick to the model 1 in which audience_score is predicted by imdb_rating, critics_score and runtime. It is important to point that the runtime is actually predicted to be a penalty factor to the audience score as its correlation corefficient is negative in this case.
+```{r}
+par(mfrow = c(1,3))
+coef_movies_bma = coefficients(movies_bma)
+plot(coef_movies_bma, subset = c(4, 9, 11) ,ask=FALSE)
+```
+
+
+* * *
+
+## Part 5: Prediction
+
+Since our objective here is to predict estimates using the Best Predictive Model option withing the predict function for predicting the estimators. Our prior here will be the BIC and the model prior may be uniform as we do not have previous information for believing otherwise.
+
+The “Trolls”, thtr_rel_year:2016, runtime:92 minutes; audience_score: 68; critics_score: 102; All these informations were collected from Rotten Tomatoes website https://www.rottentomatoes.com/m/trolls#audience_reviews
+
+Based on the above, we will run the predict function on the dataframe created with those parameters and compare the result with the observed audience score of the movie which currently 68% from Rottentomatoes website https://www.rottentomatoes.com/m/trolls#audience_reviews.
+
+```{r}
+# Here we fit the best final model
+
+movies_best_model <- bas.lm(formula = audience_score ~ imdb_rating + critics_score + runtime, data = na.omit(movies), na.action = "na.omit", prior = "BIC", modelprior = uniform())
+
+# Here we do prediction
+
+trolls_data <- data.frame(audience_score=68, critics_score=102, runtime=92, imdb_rating=6.5)
+
+trolls_predict <- predict(movies_best_model, newdata = trolls_data, estimator = "BPM", se.fit = TRUE, prediction = TRUE)
+
+confint(trolls_predict)
+```
+The predicted value using the selected model for the Trolls movies (2016) is 65.88676 an which deviates from the observed value of 2.11324 points. But looking at the confidence interval [45.75 - 86.01], the actual value 68 falls largely within this interval. The point estimage of the audience_score under this model is 65.88 ± 20.13
+
+* * *
+
+## Part 6: Conclusion
+We can see from the output of the that the model has 95% probability of predicting the audience score based on the predictors selected. However the margin of error ME=20.13 is quite large yielding so a low precision of the model.
+
